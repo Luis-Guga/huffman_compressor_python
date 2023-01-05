@@ -1,0 +1,2 @@
+bug #1:
+    when a file with compressed text is read, the text diverges a bit from the text written
