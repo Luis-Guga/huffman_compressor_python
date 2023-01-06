@@ -2,9 +2,7 @@ from .classes.node import Node
 from tabulate import tabulate
 import csv
 
-
-# pseudo-end-of-file to add to the compressed file.
-PSEUDO_EOF: str = chr(255)
+HEADER_MAX_DIGITS = 16
 
 
 def create_tree(tree: list()):
@@ -40,40 +38,33 @@ def get_encoded_dict(node: Node, left: bool() = False, encoding: str() = ''):
     return encoded
 
 
-def str_to_bytes(text: str):
-    byte_list = list()
+def get_decoding_dict_from_encoding_dict(encoding_dict: dict()):
+    decoding_dict = dict()
 
-    # must count how many bits we have for an integer
-    bit_count = 0
+    for key in encoding_dict:
+        decoding_dict[encoding_dict[key]] = key
 
-    # current byte being built
-    byte = 0
+    return decoding_dict
+
+
+def get_byte_list(bin_text: str):
+    byte_list = bytearray()
 
     # by convention, the first char of a 8-char group will be on the left
-    for ch in text:
-        # at the end of the byte, reset all the auxiliar variables and append the byte to the list
-        if bit_count == 8:
-            byte_list.append(byte)
-            bit_count = 0
-            byte = 0
-
-        # build the currenct byte by shifting the 1's to the left, because the conversion from str to integer is needed
-        # example: 0010110001 would be converted to 44 and 64 (not 2). the most important is to have the prefix correctly
-        byte |= int(ch) << (7-bit_count)
-        bit_count += 1
-
-    byte_list.append(byte)
+    for i in range(0, len(bin_text), 8):
+        byte = int(bin_text[i:i+8], 2)
+        byte_list.append(byte)
 
     return byte_list
 
 
 def print_encoding(tree: Node, symbol_frequency: list()):
     # get tree encoding dictionary
-    huffman_dict: dict() = get_encoded_dict(tree)
+    encoding_dict: dict() = get_encoded_dict(tree)
 
     table = list()
     for (char, freq) in symbol_frequency:
-        table.append([char, freq, huffman_dict[char]])
+        table.append(['%r' % (char), freq, encoding_dict[char]])
 
     print(tabulate(tabular_data=[['Encoding scheme: ']],
                    tablefmt='fancy_outline'))
@@ -82,17 +73,17 @@ def print_encoding(tree: Node, symbol_frequency: list()):
 
 
 def save_encoding(tree: Node, symbol_frequency: list(), file: str):
-    huffman_dict: dict() = get_encoded_dict(tree)
+    encoding_dict: dict() = get_encoded_dict(tree)
 
-    with open(file, 'w') as out_table:
+    with open(file, 'w', encoding='utf-8') as out_table:
         csv_writer = csv.writer(out_table)
         csv_writer.writerow(['CHAR', 'OCCURENCES', 'ENCODING'])
         for (char, freq) in symbol_frequency:
-            csv_writer.writerow([char, freq, huffman_dict[char]])
+            csv_writer.writerow([char, freq, encoding_dict[char]])
 
 
 def save_binary(string: str, file: str):
-    with open(file, 'w') as out_bin:
+    with open(file, 'w', encoding='utf-8') as out_bin:
         out_bin.write(string)
 
 
@@ -106,31 +97,28 @@ def print_statistics(message: str, encoded: str):
 
 def build_header(symbol_frequency: list):
     table = str()
+    header_size = str()
+
     for (char, freq) in symbol_frequency:
         table += char + str(freq)
-    return table
+    header_size += str(len(table)).zfill(HEADER_MAX_DIGITS)
+    return header_size + table
 
 
 def parse_compressed_file(file: str):
     symbol_frequency = dict()
+    with open(file, 'rb') as input_file:
+        header_size = input_file.read(HEADER_MAX_DIGITS)
+        header = input_file.read(int(header_size)).decode()
+        text = input_file.read()
 
-    with open(file, 'r') as input_file:
-        text: str = input_file.read()
-        header, text = pop_header(text)
-        symbol_frequency: dict = build_table_from_header(header)
+    symbol_frequency: dict = build_table_from_header(header)
 
-    return [symbol_frequency, text]
+    padded_bits = int(chr(text[-1]))
+    bin_encoded_text = restore_bin_encoded_text(text)
+    bin_encoded_text = bin_encoded_text[:-(padded_bits+8)]
 
-
-def pop_header(text: str):
-    header = str()
-    for i in range(len(text)):
-        if text[i] == PSEUDO_EOF:
-            header += text[i] + text[i+1]
-            break
-        header += text[i]
-    text = text[len(header):]
-    return [header, text]
+    return [symbol_frequency, bin_encoded_text]
 
 
 def build_table_from_header(header: str):
@@ -156,13 +144,10 @@ def build_table_from_header(header: str):
 
 
 def parse_uncompressed_file(file: str):
-    with open(file, 'r') as input_file:
+    with open(file, 'r', encoding='utf-8') as input_file:
         # read everything at once. This way there are less function calls in comparison to as if one would read line by line
         message: str = input_file.read()
-
-        message += PSEUDO_EOF
         symbol_frequency: dict = get_frequency_table(message)
-
     return (symbol_frequency, message)
 
 
@@ -180,22 +165,54 @@ def get_frequency_table(text: str):
     return symbol_frequency
 
 
-def get_encoded_text(origin_text: str, huffman_dict: dict):
+def get_encoded_text(origin_text: str, encoding_dict: dict):
     encoded_text = str()
     for char in origin_text:
-        encoded_text += huffman_dict[char]
+        encoded_text += encoding_dict[char]
 
     return encoded_text
 
 
+def restore_bin_encoded_text(encoded: str):
+    bin_encoded_text = str()
+    for ch in encoded:
+        bin_encoded_text += bin(ch).replace('0b', '').zfill(8)
+
+    return bin_encoded_text
+
+
+def get_decoded_text(encoded_text: str, decoding_dict: dict):
+    decoded_text = str()
+    moving_window = str()
+    for ch in encoded_text:
+        if moving_window in decoding_dict:
+            decoded_text += decoding_dict[moving_window]
+            moving_window = str()
+        moving_window += ch
+    if moving_window in decoding_dict:
+        decoded_text += decoding_dict[moving_window]
+        moving_window = str()
+    return decoded_text
+
+
 def write_encoded_text_to_file(header: str, encoded_text: str, file: str):
+    encoded_text, count_padding = add_padding(encoded_text)
     with open(file, 'w') as output_file:
         # write the encoding table
         output_file.write(header)
 
-        # convert every 32 chars into a 32 bit integer, the function returns a list of 32 bit integers
-        byte_list: list = str_to_bytes(encoded_text)
-        for byte in byte_list:
-            output_file.write(chr(byte))
-            print(chr(byte), end='')
-        print()
+    with open(file, 'ab') as output_file:
+        # convert encoded text in bytes to write to the file
+        byte_list: list = get_byte_list(encoded_text)
+        output_file.write(bytes(byte_list))
+        output_file.write(count_padding.encode('utf-8'))
+
+
+def add_padding(text: str):
+    count_padding = count_padding_bits(text)
+    text += '0' * count_padding
+    return text, str(count_padding)
+
+
+def count_padding_bits(text: str):
+    return 8 - (len(text) % 8)

@@ -1,7 +1,7 @@
 import argparse
 import sys
 import modules.huffman as huffman
-
+# removed the pseudo-eof. need to count the header size to read it and add padding info
 """ The programmer's prayer is always a good start:
 
 
@@ -35,7 +35,7 @@ def main():
         argparser.print_usage()
         sys.exit(argparser.prog + ": too few comamnd-line arguments")
 
-    if args_mutex(args):
+    if args_mutex(args) and args.decompress:
         argparser.print_usage()
         sys.exit(argparser.prog +
                  ": error: arguments -o/--output: not allowed woth argument -m/--message")
@@ -46,20 +46,20 @@ def main():
                 # get the symbols frequency and the file text. the text is necessary for the compression
                 symbol_frequency, text = huffman.parse_uncompressed_file(
                     args.file)
+
             else:
                 # get the symbols frequency and the file text. the text does not include the header, it was removed from the original compressed text
                 symbol_frequency, text = huffman.parse_compressed_file(
                     args.file)
         else:
             text = args.message
+            # remove \r for portability issues
             symbol_frequency = huffman.get_frequency_table(text)
 
     except FileNotFoundError:
         sys.exit(argparser.prog + ": file does not exist")
 
-    # check for one or zero because a pseudo EOF was appended to the file text while counting the characters occurence, it is not possible to have a
-    # single character in a compressed file, because the table size that is written to the file has a minimum of 3 characters: <char, char_freq, pseudo-eof>
-    if len(symbol_frequency) < 2:
+    if len(symbol_frequency) < 1 and args.decompress or len(text) < 1 and args.compress:
         sys.exit(argparser.prog + ": input file is empty")
 
     # sort the list by occurence frequency to ease the transformation of the list in the huffman's tree
@@ -73,21 +73,23 @@ def main():
     tree = huffman.create_tree(tree)
 
     # interpret the tree and assign '0' to the left child node and '1' to the right child node of each node (if the node is not a leaf)
-    huffman_dict: dict() = huffman.get_encoded_dict(tree[0][0])
+    huffman_encoding_dict: dict() = huffman.get_encoded_dict(tree[0][0])
 
     if args.compress:
         header = huffman.build_header(symbol_frequency)
-
         # need to encode the text according to each character of the original text
-        encoded_text = huffman.get_encoded_text(text, huffman_dict)
-        print("Text written")
+        encoded_text = huffman.get_encoded_text(text, huffman_encoding_dict)
         if args.output:
             huffman.write_encoded_text_to_file(
                 header, encoded_text, args.output)
+
     else:
-        # decompress things, but first see if the content is identical to the written content
-        print("Text read:")
-        print(text)
+        huffman_decoding_dict: dict() = huffman.get_decoding_dict_from_encoding_dict(
+            huffman_encoding_dict)
+        decoded_text = huffman.get_decoded_text(
+            text, huffman_decoding_dict)
+        with open(args.output, 'w') as output_file:
+            output_file.write(decoded_text)
 
     if args.verbose:
         if args.compress:
@@ -100,7 +102,7 @@ def main():
         print("The encoding table will be saved in: " + TABLE_FILE)
         huffman.save_encoding(tree[0][0], symbol_frequency, TABLE_FILE)
 
-    if args.save_encoded_binary:
+    if args.save_encoded_binary and args.compress:
         ENC_FILE = "huffman_encoded_binary.txt"
         print("The encoding table will be saved in: " + ENC_FILE)
         huffman.save_binary(encoded_text, ENC_FILE)
