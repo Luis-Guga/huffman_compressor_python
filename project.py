@@ -1,5 +1,6 @@
 import argparse
 import sys
+import os
 from modules.huffman import Huffman
 # removed the pseudo-eof. need to count the header size to read it and add padding info
 """ The programmer's prayer is always a good start:
@@ -38,7 +39,7 @@ def main():
     if args_mutex(args) and args.decompress:
         argparser.print_usage()
         sys.exit(argparser.prog +
-                 ": error: arguments -o/--output: not allowed woth argument -m/--message")
+                 ": error: arguments -d/--decompress: not allowed woth argument -m/--message")
 
     huffman = Huffman()
     try:
@@ -72,14 +73,34 @@ def main():
     huffman.build_encoding_dict()
 
     if args.verbose:
+        print("Algorithm's generated table:")
         huffman.print_encoding()
 
     if args.compress:
         huffman.build_header()
+
+        if args.verbose:
+            print("Header added to the encoded file:")
+            print(huffman.header)
+            print()
+
         # need to encode the text according to each character of the original text
         huffman.build_encoded_text()
-        if args.output:
-            huffman.write_encoded_text_to_file(args.output)
+
+        if args.save_encoded_binary:
+            ENC_FILE = "huffman_encoded_binary.txt"
+            print("The encoding table will be saved in: " + ENC_FILE)
+            huffman.save_binary(ENC_FILE)
+
+        huffman.write_encoded_text_to_file(args.output)
+
+        if args.verbose:
+            if args.file:
+                print_statistics_with_input_file(
+                    huffman, args.file, args.output)
+            else:
+                print_statistics_with_written_message(huffman,
+                                                      args.message, args.output)
 
     else:
         huffman.build_decoding_dict_from_encoding_dict()
@@ -90,12 +111,7 @@ def main():
     if args.save_encoding_table:
         TABLE_FILE = "huffman_encoding_table.csv"
         print("The encoding table will be saved in: " + TABLE_FILE)
-        huffman.save_encoding(TABLE_FILE)
-
-    if args.save_encoded_binary and args.compress:
-        ENC_FILE = "huffman_encoded_binary.txt"
-        print("The encoding table will be saved in: " + ENC_FILE)
-        huffman.save_binary(ENC_FILE)
+        huffman.save_encoding_table(TABLE_FILE)
 
 
 def args_incomplete(args: argparse.Namespace):
@@ -103,7 +119,24 @@ def args_incomplete(args: argparse.Namespace):
 
 
 def args_mutex(args: argparse.Namespace):
-    return args.output and args.message
+    return args.decompress and args.message
+
+
+def print_statistics_with_input_file(huffman: Huffman, input_file: str, output_file: str):
+    output_file_stats = os.stat(output_file)
+    input_file_stats = os.stat(input_file)
+    print("Uncompressed file size: %d bytes" % (input_file_stats.st_size))
+    print("Compressed file size: %d bytes" % (output_file_stats.st_size))
+    print("+-- Header size: %d bytes" % (len(huffman.header)))
+    print("+-- Padding bits added to the file: %d" % (huffman.padding_count))
+    print("The compressed file is %.2d%% the size of the original file" %
+          (100*output_file_stats.st_size/input_file_stats.st_size))
+
+
+def print_statistics_with_written_message(huffman: Huffman, message: str, output_file: str):
+    message_size = len(huffman.decoded_text)
+    compressed_text_size = len(
+        huffman.header) + len(huffman.byte_array) + 1
 
 
 def define_program_args():
@@ -127,7 +160,7 @@ def define_program_args():
         to see how it would be compressed.", type=str)
 
     argparser.add_argument(
-        "-o", "--output", help="compressor's output file (default: terminal)", type=str)
+        "-o", "--output", help="compressor's output file", type=str, required=True)
 
     argparser.add_argument("-v", "--verbose", help="show encoding table and \
         processing texts", action='store_true')

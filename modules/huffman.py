@@ -33,6 +33,7 @@ class Huffman:
         self.byte_array = bytearray()
         self.encoded_text = str()
         self.tree = Node()
+        self.padding_count = int()
 
     @property
     def symbol_heap(self):
@@ -210,7 +211,7 @@ class Huffman:
         self.decoded_text += self.decoding_dict[moving_window]
 
     def write_encoded_text_to_file(self, file: str):
-        count_padding = self.add_padding()
+        self.add_padding()
         with open(file, 'w') as output_file:
             # write the encoding table
             output_file.write(self.header)
@@ -219,18 +220,16 @@ class Huffman:
             # convert encoded text in bytes to write to the file
             self.get_byte_list()
             output_file.write(bytes(self.byte_array))
-            output_file.write(count_padding.encode('utf-8'))
+            output_file.write(str(self.padding_count).encode('utf-8'))
 
     def add_padding(self):
-        count_padding = self.count_padding_bits()
-        self.encoded_text += '0' * count_padding
-
-        return str(count_padding)
+        self.padding_count = self.count_padding_bits()
+        self.encoded_text += '0' * self.padding_count
 
     def count_padding_bits(self):
         return 8 - (len(self.encoded_text) % 8)
 
-    def save_encoding(self, file: str):
+    def save_encoding_table(self, file: str):
         with open(file, 'w', encoding='utf-8') as out_table:
             csv_writer = csv.writer(out_table)
             csv_writer.writerow(['CHAR', 'OCCURENCES', 'ENCODING'])
@@ -263,7 +262,5 @@ class Huffman:
         for (char, freq) in self.symbol_heap:
             table.append(['%r' % (char), freq, self.encoding_dict[char]])
 
-        print(tabulate(tabular_data=[['Encoding scheme: ']],
-                       tablefmt='fancy_outline'))
         headers = ['CHAR', 'OCCURENCES', 'ENCODING']
         print(tabulate(table, headers, tablefmt='fancy_outline'))
