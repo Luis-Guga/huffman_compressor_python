@@ -1,218 +1,269 @@
-from .classes.node import Node
+# from .classes.node import Node
 from tabulate import tabulate
 import csv
+
+HEADER_TERMINATOR = chr(127)
+HEADER_ELEMENT_SEPARATOR = chr(7)
+
+
+class Node:
+    def __init__(self, left=None, right=None):
+        self._left = left
+        self._right = right
+
+    def children(self):
+        return (self._left, self._right)
+
+    def __str__(self):
+        return f"{self._left}_{self._right}"
+
 
 HEADER_MAX_DIGITS = 16
 
 
-def create_tree(tree: list()):
-    while len(tree) > 1:
-        # get the two least frequent symbols of the list to build the tree
-        (sym1, freq1) = tree[-1]
-        (sym2, freq2) = tree[-2]
+class Huffman:
 
-        # remove them after the acquisition because we will turn the symbols into nodes
-        tree = tree[:-2]
+    def __init__(self):
+        self.symbol_heap = dict()
+        self.encoding_dict = dict()
+        self.decoding_dict = dict()
+        self.header = str()
+        self.header_size = int()
+        self.decoded_text = str()
+        self.byte_array = bytearray()
+        self.encoded_text = str()
+        self.tree = Node()
 
-        # build the node of the tree
-        node = Node((sym1, freq1), (sym2, freq2))
+    @property
+    def symbol_heap(self):
+        return self._symbol_heap
 
-        # add node to the tree
-        tree.append((node, freq1 + freq2))
+    @symbol_heap.setter
+    def symbol_heap(self, symbol_heap):
+        if symbol_heap == None:
+            raise ValueError("Invalid list (None)")
+        self._symbol_heap = symbol_heap
 
-        # resort the tree, so that the tree stays updated
-        tree = sorted(tree, key=lambda n: n[1], reverse=True)
+    @property
+    def encoding_dict(self):
+        return self._encoding_dict
 
-    return tree
+    @encoding_dict.setter
+    def encoding_dict(self, encoding_dict):
+        if encoding_dict == None:
+            raise ValueError(
+                "Invalid encoding dictionary (None)")
+        self._encoding_dict = encoding_dict
 
+    @property
+    def decoding_dict(self):
+        return self._decoding_dict
 
-def get_encoded_dict(node: Node, left: bool() = False, encoding: str() = ''):
-    if type(node) is str:
-        return {node: encoding}
+    @decoding_dict.setter
+    def decoding_dict(self, decoding_dict):
+        if decoding_dict == None:
+            raise ValueError(
+                "Invalid decoding dictionary (None)")
+        self._decoding_dict = decoding_dict
 
-    (l, r) = node.children()
-    encoded = dict()
-    encoded.update(get_encoded_dict(l[0], True, encoding + '0'))
-    encoded.update(get_encoded_dict(r[0], False, encoding + '1'))
+    @property
+    def decoded_text(self):
+        return self._decoded_text
 
-    return encoded
+    @decoded_text.setter
+    def decoded_text(self, decoded_text):
+        if decoded_text == None:
+            raise ValueError("Invalid text")
+        self._decoded_text = decoded_text
 
+    @property
+    def encoded_text(self):
+        return self._encoded_text
 
-def get_decoding_dict_from_encoding_dict(encoding_dict: dict()):
-    decoding_dict = dict()
+    @encoded_text.setter
+    def encoded_text(self, encoded_text):
+        if encoded_text == None or len(encoded_text) == 1:
+            raise ValueError("Invalid compressed text")
+        self._encoded_text = encoded_text
 
-    for key in encoding_dict:
-        decoding_dict[encoding_dict[key]] = key
+    @property
+    def byte_array(self):
+        return self._byte_array
 
-    return decoding_dict
+    @byte_array.setter
+    def byte_array(self, byte_array):
+        if byte_array == None or len(byte_array) == 1:
+            raise ValueError("Invalid encoded message")
+        self._byte_array = byte_array
 
+    def build_frequency_table(self):
+        # iterate through the message in the provided file (or as input on command-line) to count the most frequent symbols
+        for symbol in self.decoded_text:
+            # add the symbols and its frequency to the list, so that we can access them later to create the huffman's tree
+            if symbol in self.symbol_heap:
+                self.symbol_heap[symbol] += 1
+            else:
+                self.symbol_heap[symbol]: int = 1
 
-def get_byte_list(bin_text: str):
-    byte_list = bytearray()
+    def build_tree(self):
+        symbol_heap: list() = self.symbol_heap
 
-    # by convention, the first char of a 8-char group will be on the left
-    for i in range(0, len(bin_text), 8):
-        byte = int(bin_text[i:i+8], 2)
-        byte_list.append(byte)
+        while len(symbol_heap) > 1:
+            # get the two least frequent symbols of the list to build the tree
+            (sym1, freq1) = symbol_heap[-1]
+            (sym2, freq2) = symbol_heap[-2]
 
-    return byte_list
+            # remove them after the acquisition because we will turn the symbols into nodes
+            symbol_heap = symbol_heap[:-2]
 
+            # build the node of the self.symbol_heap
+            node = Node((sym1, freq1), (sym2, freq2))
 
-def print_encoding(tree: Node, symbol_frequency: list()):
-    # get tree encoding dictionary
-    encoding_dict: dict() = get_encoded_dict(tree)
+            # add node to the self.symbol_heap
+            symbol_heap.append((node, freq1 + freq2))
 
-    table = list()
-    for (char, freq) in symbol_frequency:
-        table.append(['%r' % (char), freq, encoding_dict[char]])
+            # resort the tree, so that the tree stays updated
+            symbol_heap = sorted(
+                symbol_heap, key=lambda n: n[1], reverse=True)
 
-    print(tabulate(tabular_data=[['Encoding scheme: ']],
-                   tablefmt='fancy_outline'))
-    headers = ['CHAR', 'OCCURENCES', 'ENCODING']
-    print(tabulate(table, headers, tablefmt='fancy_outline'))
+        self.tree = symbol_heap[0][0]
 
+    def build_encoding_dict(self):
+        self.encoding_dict = self.__build_encoding_dict_helper__(self.tree)
 
-def save_encoding(tree: Node, symbol_frequency: list(), file: str):
-    encoding_dict: dict() = get_encoded_dict(tree)
+    def __build_encoding_dict_helper__(self, node: Node, left: bool() = False, encoding: str() = ''):
+        if type(node) is str:
+            return {node: encoding}
 
-    with open(file, 'w', encoding='utf-8') as out_table:
-        csv_writer = csv.writer(out_table)
-        csv_writer.writerow(['CHAR', 'OCCURENCES', 'ENCODING'])
-        for (char, freq) in symbol_frequency:
-            csv_writer.writerow([char, freq, encoding_dict[char]])
+        (l, r) = node.children()
 
+        encoded = dict()
 
-def save_binary(string: str, file: str):
-    with open(file, 'w', encoding='utf-8') as out_bin:
-        out_bin.write(string)
+        encoded.update(self.__build_encoding_dict_helper__(
+            l[0], True, encoding + '0'))
+        encoded.update(self.__build_encoding_dict_helper__(
+            r[0], False, encoding + '1'))
 
+        return encoded
 
-def print_statistics(message: str, encoded: str):
-    print("========= STATISTICS =========")
-    print("Original text size: %d bits" % (len(message)*8))
-    print("Encoded text size: %d bits" % (len(encoded)))
-    print("Size reduction: %d%%" % (100 - 100*len(encoded)/(len(message)*8)))
-    print("==============================")
+    def build_decoding_dict_from_encoding_dict(self):
+        for key in self.encoding_dict:
+            self.decoding_dict[self.encoding_dict[key]] = key
 
+    def build_header(self):
+        table = str()
+        for (char, freq) in self.symbol_heap:
+            table += char + str(freq) + HEADER_ELEMENT_SEPARATOR
+        self.header = table + HEADER_TERMINATOR
 
-def build_header(symbol_frequency: list):
-    table = str()
-    header_size = str()
+    def build_heap_from_header(self):
+        header_element_list = list()
+        header_element_list = self.header.split(HEADER_ELEMENT_SEPARATOR)
+        header_element_list.pop()
+        for element in header_element_list:
+            self.symbol_heap[element[0]] = int(element[1:])
 
-    for (char, freq) in symbol_frequency:
-        table += char + str(freq)
-    header_size += str(len(table)).zfill(HEADER_MAX_DIGITS)
-    return header_size + table
+    def build_encoded_text(self):
+        for char in self.decoded_text:
+            self.encoded_text += self.encoding_dict[char]
 
+    def sort_symbol_heap(self):
+        self.symbol_heap = sorted(self.symbol_heap.items(),
+                                  key=lambda l: l[1], reverse=True)
 
-def parse_compressed_file(file: str):
-    symbol_frequency = dict()
-    with open(file, 'rb') as input_file:
-        header_size = input_file.read(HEADER_MAX_DIGITS)
-        header = input_file.read(int(header_size)).decode()
-        text = input_file.read()
+    def get_byte_list(self):
+        # by convention, the first char of a 8-char group will be on the left
+        for i in range(0, len(self.encoded_text), 8):
+            byte = int(self.encoded_text[i:i+8], 2)
+            self.byte_array.append(byte)
 
-    symbol_frequency: dict = build_table_from_header(header)
+    def parse_uncompressed_file(self, file: str):
+        with open(file, 'r', encoding='utf-8') as input_file:
+            # read everything at once. This way there are less function calls in comparison to as if one would read line by line
+            self.decoded_text = input_file.read()
+            self.build_frequency_table()
 
-    padded_bits = int(chr(text[-1]))
-    bin_encoded_text = restore_bin_encoded_text(text)
-    bin_encoded_text = bin_encoded_text[:-(padded_bits+8)]
+    def parse_compressed_file(self, file: str):
+        tmp = list()
+        with open(file, 'rb') as input_file:
+            tmp = input_file.read().split(
+                str.encode(HEADER_TERMINATOR), maxsplit=1)
+            self.header = tmp[0].decode()
+            self.byte_array = tmp[1]
+        self.build_heap_from_header()
+        padded_bits = int(chr(self.byte_array[-1]))
+        self.restore_bin_encoded_text()
+        self.encoded_text = self.encoded_text[:-(padded_bits+8)]
 
-    return [symbol_frequency, bin_encoded_text]
+    def restore_bin_encoded_text(self):
+        for ch in self.byte_array:
+            self.encoded_text += bin(ch).replace('0b', '').zfill(8)
 
-
-def build_table_from_header(header: str):
-    symbol_frequency = dict()
-    occurences = str()
-    symbol = str()
-    got_occurences = False
-    got_symbol = False
-    for char in header:
-        if not got_symbol and not char.isdecimal():
-            symbol += char
-        elif not got_occurences and char.isdecimal():
-            got_symbol = True
-            occurences += char
-        else:
-            got_symbol = False
-            got_occurences = False
-            symbol_frequency[symbol] = int(occurences)
-            occurences = str()
-            symbol = char
-    symbol_frequency[symbol] = int(occurences)
-    return symbol_frequency
-
-
-def parse_uncompressed_file(file: str):
-    with open(file, 'r', encoding='utf-8') as input_file:
-        # read everything at once. This way there are less function calls in comparison to as if one would read line by line
-        message: str = input_file.read()
-        symbol_frequency: dict = get_frequency_table(message)
-    return (symbol_frequency, message)
-
-
-def get_frequency_table(text: str):
-    symbol_frequency = dict()
-    # iterate through the message in the provided file (or as input on command-line) to count the most frequent symbols
-    for symbol in text:
-
-        # add the symbols and its frequency to the list, so that we can access them later to create the huffman's tree
-        if symbol in symbol_frequency:
-            symbol_frequency[symbol] += 1
-        else:
-            symbol_frequency[symbol]: int = 1
-
-    return symbol_frequency
-
-
-def get_encoded_text(origin_text: str, encoding_dict: dict):
-    encoded_text = str()
-    for char in origin_text:
-        encoded_text += encoding_dict[char]
-
-    return encoded_text
-
-
-def restore_bin_encoded_text(encoded: str):
-    bin_encoded_text = str()
-    for ch in encoded:
-        bin_encoded_text += bin(ch).replace('0b', '').zfill(8)
-
-    return bin_encoded_text
-
-
-def get_decoded_text(encoded_text: str, decoding_dict: dict):
-    decoded_text = str()
-    moving_window = str()
-    for ch in encoded_text:
-        if moving_window in decoding_dict:
-            decoded_text += decoding_dict[moving_window]
-            moving_window = str()
-        moving_window += ch
-    if moving_window in decoding_dict:
-        decoded_text += decoding_dict[moving_window]
+    def build_decoded_text(self):
         moving_window = str()
-    return decoded_text
+        for ch in self.encoded_text:
+            if moving_window in self.decoding_dict:
+                self.decoded_text += self.decoding_dict[moving_window]
+                moving_window = str()
+            moving_window += ch
 
+        self.decoded_text += self.decoding_dict[moving_window]
 
-def write_encoded_text_to_file(header: str, encoded_text: str, file: str):
-    encoded_text, count_padding = add_padding(encoded_text)
-    with open(file, 'w') as output_file:
-        # write the encoding table
-        output_file.write(header)
+    def write_encoded_text_to_file(self, file: str):
+        count_padding = self.add_padding()
+        with open(file, 'w') as output_file:
+            # write the encoding table
+            output_file.write(self.header)
 
-    with open(file, 'ab') as output_file:
-        # convert encoded text in bytes to write to the file
-        byte_list: list = get_byte_list(encoded_text)
-        output_file.write(bytes(byte_list))
-        output_file.write(count_padding.encode('utf-8'))
+        with open(file, 'ab') as output_file:
+            # convert encoded text in bytes to write to the file
+            self.get_byte_list()
+            output_file.write(bytes(self.byte_array))
+            output_file.write(count_padding.encode('utf-8'))
 
+    def add_padding(self):
+        count_padding = self.count_padding_bits()
+        self.encoded_text += '0' * count_padding
 
-def add_padding(text: str):
-    count_padding = count_padding_bits(text)
-    text += '0' * count_padding
-    return text, str(count_padding)
+        return str(count_padding)
 
+    def count_padding_bits(self):
+        return 8 - (len(self.encoded_text) % 8)
 
-def count_padding_bits(text: str):
-    return 8 - (len(text) % 8)
+    def save_encoding(self, file: str):
+        with open(file, 'w', encoding='utf-8') as out_table:
+            csv_writer = csv.writer(out_table)
+            csv_writer.writerow(['CHAR', 'OCCURENCES', 'ENCODING'])
+            for (char, freq) in self.symbol_heap:
+                csv_writer.writerow([char, freq, self.encoding_dict[char]])
+
+    def save_binary(self, file: str):
+        with open(file, 'w', encoding='utf-8') as out_bin:
+            out_bin.write(self.encoded_text)
+
+    def print_statistics(self, encoded_file, decoded_file):
+        table = list()
+
+        print(tabulate(tabular_data=[
+              ["STATISTICS"]], tablefmt='fancy_outline'))
+
+        table.append(["Original text size ", str(
+            len(self.decoded_text)*8) + " bits"])
+
+        table.append(["Encoded text size ", str(
+            len(self.encoded_text)*8) + " bits"])
+
+        table.append(["Size reduction", str((100 - 100 *
+                     len(self.encoded_text)/(len(self.decoded_text)*8))) + "%%"])
+
+        print(tabulate(table, tablefmt='fancy_outline'))
+
+    def print_encoding(self):
+        table = list()
+        for (char, freq) in self.symbol_heap:
+            table.append(['%r' % (char), freq, self.encoding_dict[char]])
+
+        print(tabulate(tabular_data=[['Encoding scheme: ']],
+                       tablefmt='fancy_outline'))
+        headers = ['CHAR', 'OCCURENCES', 'ENCODING']
+        print(tabulate(table, headers, tablefmt='fancy_outline'))
