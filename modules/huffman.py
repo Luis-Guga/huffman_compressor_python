@@ -6,6 +6,22 @@ HEADER_TERMINATOR = chr(127)
 HEADER_ELEMENT_SEPARATOR = chr(7)
 
 
+class EmptyFile(Exception):
+    pass
+
+
+class NotCompressable(Exception):
+    pass
+
+
+class NoHeader(Exception):
+    pass
+
+
+class InvalidPadding(Exception):
+    pass
+
+
 class Node:
     def __init__(self, left=None, right=None):
         self._left = left
@@ -68,6 +84,28 @@ class Huffman:
         self._decoding_dict = decoding_dict
 
     @property
+    def header(self):
+        return self._header
+
+    @header.setter
+    def header(self, header):
+        if header == None:
+            raise ValueError(
+                "Invalid header")
+        self._header = header
+
+    @property
+    def header_size(self):
+        return self._header_size
+
+    @header_size.setter
+    def header_size(self, header_size):
+        if header_size == None:
+            raise ValueError(
+                "Invalid header size")
+        self._header_size = header_size
+
+    @property
     def decoded_text(self):
         return self._decoded_text
 
@@ -83,7 +121,7 @@ class Huffman:
 
     @encoded_text.setter
     def encoded_text(self, encoded_text):
-        if encoded_text == None or len(encoded_text) == 1:
+        if encoded_text == None:
             raise ValueError("Invalid compressed text")
         self._encoded_text = encoded_text
 
@@ -93,9 +131,20 @@ class Huffman:
 
     @byte_array.setter
     def byte_array(self, byte_array):
-        if byte_array == None or len(byte_array) == 1:
+        if byte_array == None:
             raise ValueError("Invalid encoded message")
         self._byte_array = byte_array
+
+    @property
+    def padding_count(self):
+        return self._padding_count
+
+    @padding_count.setter
+    def padding_count(self, padding_count):
+        if padding_count == None:
+            raise ValueError(
+                "Invalid header size")
+        self._padding_count = padding_count
 
     def build_frequency_table(self):
         # iterate through the message in the provided file (or as input on command-line) to count the most frequent symbols
@@ -182,6 +231,13 @@ class Huffman:
         with open(file, 'r', encoding='utf-8') as input_file:
             # read everything at once. This way there are less function calls in comparison to as if one would read line by line
             self.decoded_text = input_file.read()
+
+            if not self.decoded_text:
+                raise EmptyFile("Cannot compress empty file")
+            if not self.decoded_text.isascii():
+                raise NotCompressable(
+                    "Only extended-ascii/utf8 encoded files are compressable")
+
             self.build_frequency_table()
 
     def parse_compressed_file(self, file: str):
@@ -189,12 +245,24 @@ class Huffman:
         with open(file, 'rb') as input_file:
             tmp = input_file.read().split(
                 str.encode(HEADER_TERMINATOR), maxsplit=1)
+
+            if not tmp:
+                raise EmptyFile("Cannot decompress empty file")
+
             self.header = tmp[0].decode()
+
+            if not self.header:
+                raise NoHeader("Given compressed file has no table header")
+
             self.byte_array = tmp[1]
+
         self.build_heap_from_header()
-        padded_bits = int(chr(self.byte_array[-1]))
+        self.padding_count = int(chr(self.byte_array[-1]))
+        if self.padding_count >= 8:
+            raise InvalidPadding(
+                "The acquired padding (%d bits) is not possible" % (self.padding_count))
         self.restore_bin_encoded_text()
-        self.encoded_text = self.encoded_text[:-(padded_bits+8)]
+        self.encoded_text = self.encoded_text[: -(self.padding_count+8)]
 
     def restore_bin_encoded_text(self):
         for ch in self.byte_array:

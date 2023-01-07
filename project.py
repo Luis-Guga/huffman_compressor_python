@@ -1,7 +1,7 @@
 import argparse
 import sys
 import os
-from modules.huffman import Huffman
+from modules.huffman import Huffman, NotCompressable, EmptyFile, NoHeader, InvalidPadding
 # removed the pseudo-eof. need to count the header size to read it and add padding info
 """ The programmer's prayer is always a good start:
 
@@ -59,9 +59,18 @@ def main():
 
     except FileNotFoundError:
         sys.exit(argparser.prog + ": file does not exist")
-
-    if len(huffman.symbol_heap) < 1 and args.decompress or len(huffman.decoded_text) < 1 and args.compress:
-        sys.exit(argparser.prog + ": input file is empty")
+    except EmptyFile:
+        sys.exit(argparser.prog + ": cannot compress empty file")
+    except NotCompressable:
+        sys.exit(argparser.prog +
+                 ": only extended-ascii/utf8 encoded files are compressable")
+    except NoHeader:
+        sys.exit(argparser.prog + ": given compressed file has no table header")
+    except ValueError:
+        sys.exit(argparser.prog + ": given compressed file has no table header")
+    except InvalidPadding:
+        sys.exit(argparser.prog +
+                 ": the acquired padding (%d bits) is not possible" % (huffman.padding_count))
 
     # sort the list by occurence frequency to ease the transformation of the list in the huffman's tree
     huffman.sort_symbol_heap()
