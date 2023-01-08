@@ -498,7 +498,7 @@ class Huffman:
         self.encoded_text += '0' * self.padding_count
 
     def count_padding_bits(self):
-        return 8 - (len(self.encoded_text) % 8)
+        return (8 - (len(self.encoded_text) % 8)) % 8
 
     def print_encoding(self):
         table = list()
