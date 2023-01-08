@@ -159,7 +159,7 @@ class Huffman:
                 "Invalid header size")
         self._padding_count = padding_count
 
-    def build_frequency_table(self):
+    def build_symbol_heap(self):
         """
         Builds a frequency table (MinHeap) based on the symbols encountered in the decoded text
 
@@ -193,7 +193,7 @@ class Huffman:
         """
         if not self.symbol_heap:
             raise ValueError(
-                "The given symbol heap is empty.\nHit: Use the method Huffman.build_frequency_table()")
+                "The given symbol heap is empty.\nHit: Use the method Huffman.build_symbol_heap()")
         elif sorted(dict(self.symbol_heap).items(), key=lambda l: l[1], reverse=True) != self.symbol_heap:
             raise UnsortedHeap(
                 "The given frequency needs to be initially sorted.\nHint: Use the method Huffman.sort_symbol_heap()")
