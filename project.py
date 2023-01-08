@@ -62,7 +62,6 @@ def main():
 
         else:
             huffman.decoded_text = args.message
-            huffman.build_symbol_heap()
 
     except FileNotFoundError:
         sys.exit(argparser.prog + ": file does not exist")
