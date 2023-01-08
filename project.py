@@ -1,10 +1,14 @@
-import argparse
-import sys
-import os
-from modules.huffman import Huffman, NotCompressable, EmptyFile, NoHeader, InvalidPadding
-# removed the pseudo-eof. need to count the header size to read it and add padding info
-""" The programmer's prayer is always a good start:
+""" 
+:date: 2023-01-08
+:version: 1.0.0
+:authors:
+    - Luís Hartmann
+:description: Compresses texts using Huffman's compression algorithm 
 
+A detailed functional description is available in README.md
+
+
+The programmer's prayer is always a good start:
 
     Our program, who art in memory,
     called by thy name;
@@ -23,19 +27,25 @@ from modules.huffman import Huffman, NotCompressable, EmptyFile, NoHeader, Inval
     Return;
 """
 
+import argparse
+import sys
+import os
+import csv
+from modules.huffman import Huffman, NotCompressable, EmptyFile, NoHeader, InvalidPadding
+
 
 def main():
-    # set the program arguments, so that the user's input can be checked
+    # user's input possibilities need to be defined
     argparser: argparse.ArgumentParser = define_program_args()
 
-    # get the arguments already parsed to analyse them
     args: argparse.Namespace = argparser.parse_args()
 
-    # check if the user provided input and output files and if the operation of compression or decompression was given
+    # the user needs to provide or an input message or input file, and define if the input will be compressed or decompressed
     if args_incomplete(args):
         argparser.print_usage()
         sys.exit(argparser.prog + ": too few comamnd-line arguments")
 
+    # the user should not be able to decompress a self-generated message, because of the header, padding and other definitions.
     if args_mutex(args) and args.decompress:
         argparser.print_usage()
         sys.exit(argparser.prog +
@@ -45,40 +55,40 @@ def main():
     try:
         if args.file:
             if args.compress:
-                # get the symbols frequency and the file text. the text is necessary for the compression
                 huffman.parse_uncompressed_file(args.file)
 
             else:
-                # get the symbols frequency and the file text. the text does not include the header, it was removed from the original compressed text
                 huffman.parse_compressed_file(args.file)
 
         else:
             huffman.decoded_text = args.message
-            # remove \r for portability issues
             huffman.build_frequency_table()
 
     except FileNotFoundError:
         sys.exit(argparser.prog + ": file does not exist")
     except EmptyFile:
-        sys.exit(argparser.prog + ": cannot compress empty file")
+        sys.exit(argparser.prog + ": cannot compress empty file/string")
     except NotCompressable:
         sys.exit(argparser.prog +
                  ": only extended-ascii/utf8 encoded files are compressable")
     except NoHeader:
         sys.exit(argparser.prog + ": given compressed file has no table header")
     except ValueError:
-        sys.exit(argparser.prog + ": given compressed file has no table header")
+        sys.exit(argparser.prog +
+                 ": given compressed file has no valid table header")
     except InvalidPadding:
         sys.exit(argparser.prog +
                  ": the acquired padding (%d bits) is not possible" % (huffman.padding_count))
 
-    # sort the list by occurence frequency to ease the transformation of the list in the huffman's tree
+    huffman.build_frequency_table()
+
+    # sort the frequency table to ease the transformation of the list in the huffman's tree
     huffman.sort_symbol_heap()
 
-    # create the huffman tree. each node contains the sum of the occurrence frequency of its two children (if the node is not a leaf)
+    # create the huffman tree from the symbol frequency table
     huffman.build_tree()
 
-    # interpret the tree and assign '0' to the left child node and '1' to the right child node of each node (if the node is not a leaf)
+    # interpret the tree and assign '0' to the left child node and '1' to the right child node of each node
     huffman.build_encoding_dict()
 
     if args.verbose:
@@ -93,13 +103,12 @@ def main():
             print(huffman.header)
             print()
 
-        # need to encode the text according to each character of the original text
         huffman.build_encoded_text()
 
         if args.save_encoded_binary:
             ENC_FILE = "huffman_encoded_binary.txt"
             print("The encoding table will be saved in: " + ENC_FILE)
-            huffman.save_binary(ENC_FILE)
+            save_binary(huffman.encoded_text, ENC_FILE)
 
         huffman.write_encoded_text_to_file(args.output)
 
@@ -120,18 +129,61 @@ def main():
     if args.save_encoding_table:
         TABLE_FILE = "huffman_encoding_table.csv"
         print("The encoding table will be saved in: " + TABLE_FILE)
-        huffman.save_encoding_table(TABLE_FILE)
+        save_encoding_table(huffman.encoding_dict,
+                            huffman.symbol_heap, TABLE_FILE)
+
+
+def save_encoding_table(encoding_dict: dict, symbol_heap: dict, file: str):
+    with open(file, 'w', encoding='utf-8') as out_table:
+        csv_writer = csv.writer(out_table)
+        csv_writer.writerow(['CHAR', 'OCCURENCES', 'ENCODING'])
+        for (char, freq) in symbol_heap:
+            csv_writer.writerow([char, freq, encoding_dict[char]])
+
+
+def save_binary(encoded_text: str, file: str):
+    with open(file, 'w', encoding='utf-8') as out_bin:
+        out_bin.write(encoded_text)
 
 
 def args_incomplete(args: argparse.Namespace):
-    return (not args.file and not args.message) or (not args.compress and not args.decompress) or (not args.message and not args.output)
+    """ 
+    Determine if the program's input arguments are incomplete
+
+    :param args: program arguments
+    :type args: argparse.Namespace
+    :return: value indicating if the args arre complete or incomplete
+    :rtype: bool
+    """
+    return (not args.file and not args.message) or (not args.compress and not args.decompress)
 
 
 def args_mutex(args: argparse.Namespace):
+    """ 
+    Performs a mutual exclusion between two arguments. This mutual exclusion
+    was not possible through the add_mutually_exclusive_groups, so I made it
+    manually
+
+    :param args: program arguments
+    :type args: argparse.Namespace
+    :return: value indicating if the arguments are used at the same time
+    :rtype: bool 
+    """
+    # This mutex was not possible throught the ArgumentParser class
     return args.decompress and args.message
 
 
 def print_statistics_with_input_file(huffman: Huffman, input_file: str, output_file: str):
+    """ 
+    Prints compression statistics on the terminal
+
+    :param huffman: Huffman class object to get header size
+    :type huffman: Huffman
+    :param input_file: file that got compressed/decompressed
+    :type input_file: str
+    :param output_file: file to which the compression/decompression was written
+    :type output_file: str
+    """
     output_file_stats = os.stat(output_file)
     input_file_stats = os.stat(input_file)
     print("Uncompressed file size: %d bytes" % (input_file_stats.st_size))
@@ -143,12 +195,28 @@ def print_statistics_with_input_file(huffman: Huffman, input_file: str, output_f
 
 
 def print_statistics_with_written_message(huffman: Huffman, message: str, output_file: str):
+    """ 
+    Prints compression statistics on the terminal if a message was manually written from the user
+
+    :param huffman: Huffman class object to get header size
+    :type huffman: Huffman
+    :param message: file that got compressed
+    :type message: str
+    :param output_file: file to which the compression/decompression was written
+    :type output_file: str
+    """
     message_size = len(huffman.decoded_text)
     compressed_text_size = len(
         huffman.header) + len(huffman.byte_array) + 1
 
 
 def define_program_args():
+    """ 
+    Sets the possible command-line arguments and options.
+
+    :return: object containing all command-line configurations
+    :rtype: ArgumentParser
+    """
     argparser = argparse.ArgumentParser(
         prog="project.py",
         description="Compresses data from a given string in the command-line or from a file\
